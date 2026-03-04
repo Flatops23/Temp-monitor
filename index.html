@@ -1,29 +1,56 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClimateGuard Pro | Dashboard</title>
     <link rel="manifest" href="manifest.json">
-    <title>Climate Monitor PWA</title>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #222; color: white; }
-        #temp-display { font-size: 5rem; font-weight: bold; margin: 20px; }
-        .status-box { padding: 20px; border-radius: 10px; display: inline-block; width: 80%; }
-        .safe { background: green; } .warning { background: orange; } .danger { background: red; }
-        button { padding: 15px 30px; font-size: 1.2rem; cursor: pointer; border-radius: 5px; }
+        :root { --bg: #121212; --card: #1e1e1e; --text: #e0e0e0; --accent: #03dac6; }
+        body { background-color: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+        .container { background: var(--card); padding: 2rem; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); text-align: center; width: 90%; max-width: 400px; }
+        h1 { font-size: 1.2rem; letter-spacing: 2px; color: #888; text-transform: uppercase; }
+        #temp-val { font-size: 5rem; margin: 10px 0; font-weight: bold; color: var(--accent); }
+        #status-bar { padding: 10px; border-radius: 5px; margin-top: 20px; font-weight: bold; transition: 0.3s; background: #333; }
+        .danger { background: #cf6679 !important; color: white; }
+        .warning { background: #fbc02d !important; color: black; }
+        .safe { background: #4caf50 !important; color: white; }
+        button { background: var(--accent); border: none; padding: 12px 24px; border-radius: 50px; cursor: pointer; font-weight: bold; margin-bottom: 20px; transition: transform 0.2s; }
+        button:active { transform: scale(0.95); }
     </style>
 </head>
 <body>
-    <h1>School Science Project: Climate Alarm</h1>
-    <button id="connect">1. Connect Arduino</button>
-    <div id="temp-display">--°C</div>
-    <div id="status" class="status-box">Waiting for connection...</div>
+
+    <div class="container">
+        <h1>ClimateGuard Pro</h1>
+        <button id="connectBtn">START SYSTEM</button>
+        <div id="temp-val">--°C</div>
+        <div id="status-bar">SYSTEM OFFLINE</div>
+    </div>
 
     <script>
-        document.getElementById('connect').addEventListener('click', async () => {
-            const port = await navigator.serial.requestPort();
-            await port.open({ baudRate: 9600 });
-            
+        let port;
+        const connectBtn = document.getElementById('connectBtn');
+        const tempDisp = document.getElementById('temp-val');
+        const statusBar = document.getElementById('status-bar');
+
+        // Register Service Worker for PWA
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
+
+        connectBtn.addEventListener('click', async () => {
+            try {
+                port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 9600 });
+                connectBtn.style.display = 'none';
+                readData();
+            } catch (e) {
+                console.log("Connect cancelled");
+            }
+        });
+
+        async function readData() {
             const decoder = new TextDecoderStream();
             port.readable.pipeTo(decoder.writable);
             const reader = decoder.readable.getReader();
@@ -31,30 +58,38 @@
             while (true) {
                 const { value, done } = await reader.read();
                 if (value) {
-                    // This looks for "TEMP: XX.XX" in your Arduino Serial output
                     const match = value.match(/TEMP: (\d+\.\d+)/);
                     if (match) {
-                        const temp = parseFloat(match[1]);
-                        document.getElementById('temp-display').innerText = temp + "°C";
-                        updateUI(temp);
+                        const t = parseFloat(match[1]);
+                        tempDisp.innerText = t.toFixed(1) + "°C";
+                        updateUI(t);
                     }
                 }
             }
-        });
+        }
 
         function updateUI(t) {
-            const status = document.getElementById('status');
             if (t < 31) {
-                status.innerText = "STATUS: SAFE";
-                status.className = "status-box safe";
+                statusBar.innerText = "STATUS: STABLE";
+                statusBar.className = "safe";
             } else if (t < 32) {
-                status.innerText = "STATUS: WARNING";
-                status.className = "status-box warning";
+                statusBar.innerText = "STATUS: WARNING";
+                statusBar.className = "warning";
             } else {
-                status.innerText = "STATUS: DANGER!";
-                status.className = "status-box danger";
+                statusBar.innerText = "CRITICAL HEAT DETECTED";
+                statusBar.className = "danger";
             }
         }
+        if ("serviceWorker" in navigator) {
+        navigator.serviceWorker
+          .register("/service-worker.js")
+          .then(() => {
+            console.log("ayos! rehistro as service worker");
+          })
+          .catch((error) => {
+            console.log("Registration failed: ", error);
+          });
+      }
     </script>
 </body>
 </html>
