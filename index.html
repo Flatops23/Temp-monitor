@@ -3,71 +3,68 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ClimateGuard IoT | Admin & Remote</title>
+    <title>ClimateGuard IoT</title>
     <link rel="manifest" href="manifest.json">
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-    
     <style>
-        :root { --bg: #121212; --card: #1e1e1e; --text: #e0e0e0; --accent: #03dac6; }
-        body { background-color: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-        .container { background: var(--card); padding: 2rem; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); text-align: center; width: 90%; max-width: 400px; }
-        #temp-val { font-size: 5rem; margin: 10px 0; font-weight: bold; color: var(--accent); transition: 0.5s; }
-        #status-bar { padding: 12px; border-radius: 8px; margin-top: 20px; font-weight: bold; background: #333; text-transform: uppercase; }
-        .danger { background: #cf6679 !important; color: white; }
-        .warning { background: #fbc02d !important; color: black; }
-        .safe { background: #4caf50 !important; color: white; }
-        button { background: var(--accent); border: none; padding: 15px 30px; border-radius: 50px; cursor: pointer; font-weight: bold; margin-bottom: 20px; display: none; }
-        .mode-label { font-size: 0.8rem; color: #888; margin-bottom: 10px; letter-spacing: 1px; }
+        body { background: #121212; color: white; font-family: sans-serif; text-align: center; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+        .card { background: #1e1e1e; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 320px; }
+        .temp { font-size: 4rem; font-weight: bold; color: #03dac6; margin: 20px 0; }
+        #status { font-size: 0.9rem; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+        button { background: #03dac6; color: #121212; border: none; padding: 15px 25px; border-radius: 50px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 20px; }
+        .danger { color: #cf6679; }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <div id="mode-text" class="mode-label">INITIALIZING...</div>
-        <button id="connectBtn">CONNECT ARDUINO (ADMIN)</button>
-        <div id="temp-val">--°C</div>
-        <div id="status-bar">WAITING FOR DATA</div>
+    <div class="card">
+        <div id="mode-label" style="font-size: 0.7rem; color: #555;">DETECTING DEVICE...</div>
+        <div id="temp" class="temp">--°C</div>
+        <div id="status">System Offline</div>
+        <button id="connectBtn" style="display:none;">CONNECT ARDUINO</button>
     </div>
 
     <script>
-        // --- 1. FIREBASE CONFIGURATION ---
-        // Replace these with your actual Firebase project details!
+        // PASTE YOUR FIREBASE KEYS HERE
         const firebaseConfig = {
-            apiKey: "YOUR_API_KEY",
-            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-            databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
-            projectId: "YOUR_PROJECT_ID",
-            storageBucket: "YOUR_PROJECT_ID.appspot.com",
-            messagingSenderId: "YOUR_ID",
+            apiKey: "YOUR_KEY",
+            authDomain: "YOUR_ID.firebaseapp.com",
+            databaseURL: "https://YOUR_ID-default-rtdb.firebaseio.com",
+            projectId: "YOUR_ID",
+            storageBucket: "YOUR_ID.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
             appId: "YOUR_APP_ID"
         };
+
         firebase.initializeApp(firebaseConfig);
-        const database = firebase.database();
+        const db = firebase.database();
 
-        const connectBtn = document.getElementById('connectBtn');
-        const tempDisp = document.getElementById('temp-val');
-        const statusBar = document.getElementById('status-bar');
-        const modeText = document.getElementById('mode-text');
+        const tempDiv = document.getElementById('temp');
+        const statusDiv = document.getElementById('status');
+        const btn = document.getElementById('connectBtn');
+        const modeLabel = document.getElementById('mode-label');
 
-        // --- 2. MODE DETECTION ---
+        // Check if Laptop (Admin) or Phone (Viewer)
         if ("serial" in navigator) {
-            // LAPTOP MODE: Show button to act as Admin/Gateway
-            modeText.innerText = "ADMIN GATEWAY MODE";
-            connectBtn.style.display = "inline-block";
+            modeLabel.innerText = "LAPTOP ADMIN MODE";
+            btn.style.display = "block";
         } else {
-            // PHONE MODE: Automatically listen to Firebase
-            modeText.innerText = "REMOTE VIEWER MODE";
-            startRemoteListening();
+            modeLabel.innerText = "PHONE REMOTE VIEWER";
+            statusDiv.innerText = "WAITING FOR CLOUD DATA...";
+            // Listen to Firebase
+            db.ref('climate/temp').on('value', (snap) => {
+                const val = snap.val();
+                if (val) updateUI(val);
+            });
         }
 
-        // --- 3. ADMIN LOGIC (Laptop to Firebase) ---
-        connectBtn.addEventListener('click', async () => {
+        btn.onclick = async () => {
             const port = await navigator.serial.requestPort();
             await port.open({ baudRate: 9600 });
-            connectBtn.style.display = "none";
-            statusBar.innerText = "LINKED TO HARDWARE";
-            
+            btn.style.display = "none";
+            statusDiv.innerText = "CONNECTED TO USB";
+
             const decoder = new TextDecoderStream();
             port.readable.pipeTo(decoder.writable);
             const reader = decoder.readable.getReader();
@@ -78,39 +75,26 @@
                     const match = value.match(/TEMP: (\d+\.\d+)/);
                     if (match) {
                         const t = parseFloat(match[1]);
-                        updateDisplay(t);
-                        // PUSH TO CLOUD
-                        database.ref('climate/data').set({
-                            temp: t,
-                            time: Date.now()
-                        });
+                        updateUI(t);
+                        db.ref('climate/temp').set(t); // Sync to Cloud
                     }
                 }
             }
-        });
+        };
 
-        // --- 4. VIEWER LOGIC (Firebase to Phone) ---
-        function startRemoteListening() {
-            database.ref('climate/data').on('value', (snapshot) => {
-                const data = snapshot.val();
-                if (data) {
-                    updateDisplay(data.temp);
-                }
-            });
+        function updateUI(t) {
+            tempDiv.innerText = t.toFixed(1) + "°C";
+            if (t > 32) {
+                tempDiv.classList.add('danger');
+                statusDiv.innerText = "HOT - ALARM ACTIVE";
+            } else {
+                tempDiv.classList.remove('danger');
+                statusDiv.innerText = "NORMAL TEMPERATURE";
+            }
         }
 
-        function updateDisplay(t) {
-            tempDisp.innerText = t.toFixed(1) + "°C";
-            if (t < 31) {
-                statusBar.innerText = "STATUS: SAFE";
-                statusBar.className = "safe";
-            } else if (t < 32) {
-                statusBar.innerText = "STATUS: WARNING";
-                statusBar.className = "warning";
-            } else {
-                statusBar.innerText = "CRITICAL HEAT!";
-                statusBar.className = "danger";
-            }
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
         }
     </script>
 </body>
