@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="manifest.json">
+    <title>Climate Monitor PWA</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #222; color: white; }
+        #temp-display { font-size: 5rem; font-weight: bold; margin: 20px; }
+        .status-box { padding: 20px; border-radius: 10px; display: inline-block; width: 80%; }
+        .safe { background: green; } .warning { background: orange; } .danger { background: red; }
+        button { padding: 15px 30px; font-size: 1.2rem; cursor: pointer; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>School Science Project: Climate Alarm</h1>
+    <button id="connect">1. Connect Arduino</button>
+    <div id="temp-display">--°C</div>
+    <div id="status" class="status-box">Waiting for connection...</div>
+
+    <script>
+        document.getElementById('connect').addEventListener('click', async () => {
+            const port = await navigator.serial.requestPort();
+            await port.open({ baudRate: 9600 });
+            
+            const decoder = new TextDecoderStream();
+            port.readable.pipeTo(decoder.writable);
+            const reader = decoder.readable.getReader();
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (value) {
+                    // This looks for "TEMP: XX.XX" in your Arduino Serial output
+                    const match = value.match(/TEMP: (\d+\.\d+)/);
+                    if (match) {
+                        const temp = parseFloat(match[1]);
+                        document.getElementById('temp-display').innerText = temp + "°C";
+                        updateUI(temp);
+                    }
+                }
+            }
+        });
+
+        function updateUI(t) {
+            const status = document.getElementById('status');
+            if (t < 31) {
+                status.innerText = "STATUS: SAFE";
+                status.className = "status-box safe";
+            } else if (t < 32) {
+                status.innerText = "STATUS: WARNING";
+                status.className = "status-box warning";
+            } else {
+                status.innerText = "STATUS: DANGER!";
+                status.className = "status-box danger";
+            }
+        }
+    </script>
+</body>
+</html>
